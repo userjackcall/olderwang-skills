@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML 簡報編輯器 V0.2</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; display: flex; height: 100vh; background: #1a1a2e; color: #fff; }
+
+/* Sidebar */
+.sidebar { width: 300px; min-width: 300px; background: #21295c; display: flex; flex-direction: column; border-right: 2px solid #065a82; }
+.sidebar h2 { padding: 16px 20px; font-size: 1.1em; color: #e8aa14; border-bottom: 1px solid #065a82; }
+.slide-list { flex: 1; overflow-y: auto; padding: 10px; }
+.slide-item { padding: 10px 14px; margin-bottom: 6px; background: #1a1a3e; border-radius: 6px; cursor: grab; color: #ccc; font-size: 0.85em; border-left: 3px solid transparent; transition: 0.2s; user-select: none; }
+.slide-item:hover { background: #065a82; color: white; }
+.slide-item.active { border-left-color: #e8aa14; background: #065a82; color: white; }
+.slide-item.dragging { opacity: 0.4; }
+.slide-item.drag-over { border-top: 2px solid #e8aa14; margin-top: -2px; }
+.slide-item .num { color: #e8aa14; font-weight: bold; margin-right: 6px; }
+.slide-item .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#fileInfo { padding:8px 14px; font-size:0.8em; color:#888; border-top:1px solid #065a82; word-break:break-all; }
+
+/* Sidebar toolbar */
+.sb-toolbar { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid #065a82; flex-wrap: wrap; }
+.sb-toolbar button { padding: 6px 12px; border: 1px solid #065a82; background: transparent; color: #cadcfc; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
+.sb-toolbar button:hover { background: #065a82; }
+.sb-toolbar .danger:hover { background: #c0392b; border-color: #c0392b; }
+
+/* Main */
+.main { flex: 1; display: flex; flex-direction: column; background: #f5f9fc; }
+.preview-header { padding: 10px 20px; background: white; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
+.preview-header h3 { font-size: 1em; color: #1a1a2e; }
+.preview-header button { padding: 8px 16px; background: #065a82; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+.preview-header button:hover { background: #1c7293; }
+
+/* Editor area */
+.editor-area { flex: 1; display: flex; flex-direction: column; }
+.editor-tabs { display: flex; background: #ddd; }
+.editor-tabs .tab { padding: 8px 20px; cursor: pointer; font-size: 0.85em; border-bottom: 3px solid transparent; user-select: none; color: #065a82; }
+.editor-tabs .tab.active { background: white; border-bottom-color: #065a82; font-weight: bold; color: #065a82; }
+
+.editor-pane { flex: 1; display: none; position: relative; flex-direction: column; }
+.editor-pane.active { display: flex; }
+
+/* Formatting toolbar */
+.fmt-toolbar { display: flex; gap: 2px; padding: 6px 10px; background: #f0f0f0; border-bottom: 1px solid #ddd; flex-wrap: wrap; align-items: center; }
+.fmt-toolbar button { padding: 4px 10px; border: 1px solid #ccc; background: white; border-radius: 3px; cursor: pointer; font-size: 0.8em; min-width: 28px; color: #333; }
+.fmt-toolbar button:hover { background: #dce6f0; }
+.fmt-toolbar button:active { background: #b8cfe0; }
+.fmt-toolbar .sep { width: 1px; height: 24px; background: #ccc; margin: 0 4px; display: inline-block; }
+.fmt-toolbar select { padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 0.8em; }
+
+/* WYSIWYG editor */
+#wysiwyg-editor {
+  flex: 1; padding: 20px; overflow-y: auto; outline: none;
+  font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif;
+  line-height: 1.6;
+  background: #F5F9FC; color: #1A1A2E;
+}
+#wysiwyg-editor:empty:before {
+  content: "在此編輯投影片內容...";
+  color: #aaa;
+}
+
+/* Slide styles inside WYSIWYG editor */
+#wysiwyg-editor section { margin:0 auto; max-width:900px; border-radius:4px; padding:40px 20px; text-align:center; position:relative; box-shadow:0 0 0 1px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.08); }
+#wysiwyg-editor section.cover { background:linear-gradient(135deg,#21295C,#065A82); color:white; }
+#wysiwyg-editor section.cover h1 { font-size:2.2em; color:white; margin-bottom:0.3em; }
+#wysiwyg-editor section.cover .tag { font-size:1em; color:#E8AA14; font-weight:bold; margin-bottom:0.5em; }
+#wysiwyg-editor section.cover .author { font-size:1em; color:#CADCFC; margin-top:1em; }
+#wysiwyg-editor section.cover .gold-line { border-top:4px solid #E8AA14; width:100%; position:absolute; top:0; left:0; }
+#wysiwyg-editor section.divider { background:linear-gradient(135deg,#065A82,#1C7293); color:white; }
+#wysiwyg-editor section.divider .part-num { font-size:1em; color:#E8AA14; font-weight:bold; margin-bottom:0.3em; }
+#wysiwyg-editor section.divider h2 { font-size:2em; color:white; margin-bottom:0.3em; }
+#wysiwyg-editor section.divider .sub { font-size:1em; color:#CADCFC; }
+#wysiwyg-editor section.content-slide { background:#F5F9FC; color:#1A1A2E; text-align:left; }
+#wysiwyg-editor section.content-slide .header-bar { background:#065A82; padding:16px 30px; margin:-40px -20px 0 -20px; border-radius:4px 4px 0 0; }
+#wysiwyg-editor section.content-slide .header-bar h2 { color:white; font-size:1.4em; margin:0; }
+#wysiwyg-editor section.content-slide .header-accent { height:3px; background:#E8AA14; margin:0 -20px 20px -20px; }
+#wysiwyg-editor section.thanks { background:linear-gradient(135deg,#21295C,#065A82); color:white; }
+#wysiwyg-editor section.thanks h1 { font-size:2.5em; color:white; }
+#wysiwyg-editor section.thanks .course-title { font-size:1.2em; color:#E8AA14; margin:0.3em 0; }
+#wysiwyg-editor section.thanks .footer { font-size:0.9em; color:#CADCFC; margin-top:0.8em; }
+#wysiwyg-editor section.thanks .gold-line { border-top:4px solid #E8AA14; width:100%; position:absolute; top:0; left:0; }
+#wysiwyg-editor .two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; text-align:left; }
+#wysiwyg-editor .col-card { background:white; border-radius:8px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+#wysiwyg-editor .col-card .cc-accent { height:4px; margin:-16px -16px 12px -16px; border-radius:8px 8px 0 0; }
+#wysiwyg-editor .col-card h3 { font-size:1.1em; margin:0 0 8px 0; }
+#wysiwyg-editor .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:15px; }
+#wysiwyg-editor .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+#wysiwyg-editor .grid-item { background:white; padding:12px; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+#wysiwyg-editor .grid-item .gi-accent { height:4px; margin:-12px -12px 10px -12px; border-radius:6px 6px 0 0; }
+#wysiwyg-editor .grid-item h4 { font-size:1em; margin:0 0 4px 0; }
+#wysiwyg-editor .compare { display:flex; gap:15px; }
+#wysiwyg-editor .compare .col { flex:1; background:white; border-radius:8px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+#wysiwyg-editor .compare .col .col-accent { height:4px; margin:-16px -16px 12px -16px; border-radius:8px 8px 0 0; }
+#wysiwyg-editor .compare .col h3 { font-size:1.2em; margin:0 0 8px 0; }
+#wysiwyg-editor .compare .col ul { text-align:left; line-height:1.8; padding-left:20px;font-size:0.9em; }
+#wysiwyg-editor .card-grid { display:flex; gap:15px; flex-wrap:wrap; }
+#wysiwyg-editor .card { background:white; border-radius:8px; padding:16px; flex:1; min-width:200px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+#wysiwyg-editor .card h3 { font-size:1.1em; margin:0 0 6px 0; }
+#wysiwyg-editor .steps { display:flex; gap:12px; flex-wrap:wrap; }
+#wysiwyg-editor .step-card { background:white; border-radius:8px; padding:14px; flex:1; min-width:160px; box-shadow:0 2px 8px rgba(0,0,0,0.08); text-align:center; }
+#wysiwyg-editor .chip-grid { display:flex; flex-wrap:wrap; gap:8px; }
+#wysiwyg-editor .four-grid { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:12px; margin-top:15px; min-height:200px; }
+#wysiwyg-editor .four-item { background:white; border-radius:8px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; flex-direction:column; text-align:left; }
+#wysiwyg-editor .four-item .f-accent { height:4px; margin:-14px -14px 10px -14px; border-radius:6px 6px 0 0; }
+#wysiwyg-editor .four-item h4 { font-size:0.95em; margin:0 0 6px 0; color:#065A82; }
+#wysiwyg-editor .four-item p { font-size:0.85em; color:#333; line-height:1.6; margin:0; }
+#wysiwyg-editor .chip { background:white; border-left:4px solid #1C7293; padding:6px 14px; border-radius:4px; font-size:0.85em; }
+#wysiwyg-editor .bullet-list { text-align:left; line-height:2; padding-left:30px; }
+#wysiwyg-editor .highlight { background:#E8AA14; color:#1A1A2E; font-weight:bold; padding:8px 20px; border-radius:8px; display:inline-block; margin-top:10px; }
+#wysiwyg-editor .big-num { font-size:2em; font-weight:bold; }
+#wysiwyg-editor .stat-large { font-size:2.6em; font-weight:bold; color:#E8AA14; }
+#wysiwyg-editor  ::selection { background:#065A82; color:white; }
+#wysiwyg-editor img { max-width:100%; height:auto; border-radius:4px; }
+#wysiwyg-editor .img-wrap { display:inline-block; max-width:100%; resize:both; overflow:hidden; border-radius:4px; line-height:0; }
+#wysiwyg-editor .img-wrap img { display:block; width:100%; height:auto; border-radius:4px; max-width:none; }
+
+/* Source editor */
+#html-editor { width: 100%; height: 100%; font-family: "Consolas", "Courier New", monospace; font-size: 13px; padding: 16px; border: none; outline: none; resize: none; tab-size: 2; }
+
+/* Inline preview */
+#inline-preview { flex: 1; overflow-y: auto; padding: 10px; background: #e8e8e8; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+#inline-preview .ip-slide { width: 100%; max-width: 900px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.15); background: white; }
+#inline-preview .ip-slide section { margin:0; max-width:100%; border-radius:0; box-shadow:none; padding:40px 20px; text-align:center; position:relative; }
+#inline-preview .ip-slide section.cover { background:linear-gradient(135deg,#21295C,#065A82); color:white; }
+#inline-preview .ip-slide section.cover h1 { font-size:2.2em; color:white; margin-bottom:0.3em; }
+#inline-preview .ip-slide section.cover .tag { font-size:1em; color:#E8AA14; font-weight:bold; margin-bottom:0.5em; }
+#inline-preview .ip-slide section.cover .author { font-size:1em; color:#CADCFC; margin-top:1em; }
+#inline-preview .ip-slide section.cover .gold-line { border-top:4px solid #E8AA14; width:100%; position:absolute; top:0; left:0; }
+#inline-preview .ip-slide section.divider { background:linear-gradient(135deg,#065A82,#1C7293); color:white; }
+#inline-preview .ip-slide section.divider .part-num { font-size:1em; color:#E8AA14; font-weight:bold; margin-bottom:0.3em; }
+#inline-preview .ip-slide section.divider h2 { font-size:2em; color:white; margin-bottom:0.3em; }
+#inline-preview .ip-slide section.divider .sub { font-size:1em; color:#CADCFC; }
+#inline-preview .ip-slide section.content-slide { background:#F5F9FC; color:#1A1A2E; text-align:left; }
+#inline-preview .ip-slide section.content-slide .header-bar { background:#065A82; padding:16px 30px; margin:-40px -20px 0 -20px; border-radius:4px 4px 0 0; }
+#inline-preview .ip-slide section.content-slide .header-bar h2 { color:white; font-size:1.4em; margin:0; }
+#inline-preview .ip-slide section.content-slide .header-accent { height:3px; background:#E8AA14; margin:0 -20px 20px -20px; }
+#inline-preview .ip-slide section.thanks { background:linear-gradient(135deg,#21295C,#065A82); color:white; }
+#inline-preview .ip-slide section.thanks h1 { font-size:2.5em; color:white; }
+#inline-preview .ip-slide section.thanks .course-title { font-size:1.2em; color:#E8AA14; margin:0.3em 0; }
+#inline-preview .ip-slide section.thanks .footer { font-size:0.9em; color:#CADCFC; margin-top:0.8em; }
+#inline-preview .ip-slide section.thanks .gold-line { border-top:4px solid #E8AA14; width:100%; position:absolute; top:0; left:0; }
+#inline-preview .ip-slide .two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; text-align:left; }
+#inline-preview .ip-slide .col-card { background:white; border-radius:8px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+#inline-preview .ip-slide .col-card .cc-accent { height:4px; margin:-16px -16px 12px -16px; border-radius:8px 8px 0 0; }
+#inline-preview .ip-slide .col-card h3 { font-size:1.1em; margin:0 0 8px 0; }
+#inline-preview .ip-slide .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:15px; }
+#inline-preview .ip-slide .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+#inline-preview .ip-slide .grid-item { background:white; padding:12px; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+#inline-preview .ip-slide .grid-item .gi-accent { height:4px; margin:-12px -12px 10px -12px; border-radius:6px 6px 0 0; }
+#inline-preview .ip-slide .grid-item h4 { font-size:1em; margin:0 0 4px 0; }
+#inline-preview .ip-slide .compare { display:flex; gap:15px; }
+#inline-preview .ip-slide .compare .col { flex:1; background:white; border-radius:8px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+#inline-preview .ip-slide .compare .col .col-accent { height:4px; margin:-16px -16px 12px -16px; border-radius:8px 8px 0 0; }
+#inline-preview .ip-slide .compare .col h3 { font-size:1.2em; margin:0 0 8px 0; }
+#inline-preview .ip-slide .compare .col ul { text-align:left; line-height:1.8; padding-left:20px; font-size:0.9em; }
+#inline-preview .ip-slide .card-grid { display:flex; gap:15px; flex-wrap:wrap; }
+#inline-preview .ip-slide .card { background:white; border-radius:8px; padding:16px; flex:1; min-width:200px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+#inline-preview .ip-slide .card h3 { font-size:1.1em; margin:0 0 6px 0; }
+#inline-preview .ip-slide .steps { display:flex; gap:12px; flex-wrap:wrap; }
+#inline-preview .ip-slide .step-card { background:white; border-radius:8px; padding:14px; flex:1; min-width:160px; box-shadow:0 2px 8px rgba(0,0,0,0.08); text-align:center; }
+#inline-preview .ip-slide .chip-grid { display:flex; flex-wrap:wrap; gap:8px; }
+#inline-preview .ip-slide .chip { background:white; border-left:4px solid #1C7293; padding:6px 14px; border-radius:4px; font-size:0.85em; }
+#inline-preview .ip-slide .bullet-list { text-align:left; line-height:2; padding-left:30px; }
+#inline-preview .ip-slide .highlight { background:#E8AA14; color:#1A1A2E; font-weight:bold; padding:8px 20px; border-radius:8px; display:inline-block; margin-top:10px; }
+#inline-preview .ip-slide .big-num { font-size:2em; font-weight:bold; }
+#inline-preview .ip-slide .stat-large { font-size:2.6em; font-weight:bold; color:#E8AA14; }
+#inline-preview .ip-slide .four-grid { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:12px; margin-top:15px; min-height:200px; }
+#inline-preview .ip-slide .four-item { background:white; border-radius:8px; padding:14px; box-shadow:0 2px 8px rgba(0,0,0,0.08); display:flex; flex-direction:column; text-align:left; }
+#inline-preview .ip-slide .four-item .f-accent { height:4px; margin:-14px -14px 10px -14px; border-radius:6px 6px 0 0; }
+#inline-preview .ip-slide .four-item h4 { font-size:0.95em; margin:0 0 6px 0; color:#065A82; }
+#inline-preview .ip-slide .four-item p { font-size:0.85em; color:#333; line-height:1.6; margin:0; }
+#inline-preview .ip-slide img { max-width:100%; height:auto; border-radius:4px; }
+#inline-preview .ip-info { font-size:0.8em; color:#888; padding:8px 0; font-weight:bold; text-align:center; }
+#inline-preview .ip-nav { display:flex; gap:12px; align-items:center; justify-content:center; padding:12px 0 4px; position:sticky; top:0; z-index:10; background:#e8e8e8; width:100%; }
+#inline-preview .ip-nav button { padding:8px 18px; border:1px solid #065a82; background:white; color:#065a82; border-radius:6px; cursor:pointer; font-size:0.9em; }
+#inline-preview .ip-nav button:hover { background:#065a82; color:white; }
+#inline-preview .ip-nav span { font-size:0.9em; color:#333; font-weight:bold; }
+#inline-preview .ip-edit-hint { color:#999; font-size:0.8em; text-align:center; padding:4px 0; }
+
+/* Slide editor modal */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: white; border-radius: 12px; width: 700px; max-height: 85vh; overflow-y: auto; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+.modal h2 { margin-bottom: 16px; color: #065a82; }
+.modal label { display: block; margin: 12px 0 4px; font-weight: bold; font-size: 0.9em; color: #333; }
+.modal input, .modal textarea, .modal select { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; font-family: inherit; }
+.modal textarea { min-height: 120px; resize: vertical; }
+.modal .btn-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.modal .btn-row button { padding: 8px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
+.modal .btn-primary { background: #065a82; color: white; }
+.modal .btn-secondary { background: #ddd; color: #333; }
+.modal .btn-danger { background: #c0392b; color: white; }
+
+/* Slide type selector */
+.type-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 10px 0; }
+.type-item { padding: 10px; border: 2px solid #ddd; border-radius: 6px; text-align: center; cursor: pointer; font-size: 0.8em; transition: 0.2s; color: #065a82; }
+.type-item:hover { border-color: #065a82; }
+.type-item.selected { border-color: #065a82; background: #e8f4fd; }
+.type-item .emoji { font-size: 1.5em; display: block; margin-bottom: 4px; }
+
+.toast { position: fixed; bottom: 30px; right: 30px; background: #065a82; color: white; padding: 12px 24px; border-radius: 8px; font-size: 0.9em; opacity: 0; transition: 0.3s; z-index: 2000; pointer-events: none; }
+.toast.show { opacity: 1; }
+
+/* Color picker */
+.cp-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:3000; justify-content:center; align-items:center; }
+.cp-overlay.show { display:flex; }
+.cp-popup { background:white; border-radius:12px; padding:20px; width:340px; box-shadow:0 8px 30px rgba(0,0,0,0.25); }
+.cp-title { font-size:1em; font-weight:bold; color:#065a82; margin-bottom:12px; }
+.cp-swatches { display:grid; grid-template-columns:repeat(8,1fr); gap:4px; margin-bottom:12px; }
+.cp-swatch { width:100%; aspect-ratio:1; border-radius:4px; border:2px solid transparent; cursor:pointer; }
+.cp-swatch:hover { border-color:#065a82; transform:scale(1.15); transition:0.15s; }
+.cp-swatch.selected { border-color:#065a82; box-shadow:0 0 0 2px white, 0 0 0 4px #065a82; }
+.cp-row { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+.cp-preview { width:40px; height:40px; border-radius:6px; border:1px solid #ccc; flex-shrink:0; }
+.cp-rainbow { flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; background:linear-gradient(90deg,red,#ff0,#0f0,#0ff,#00f,#f0f,red); color:white; font-weight:bold; cursor:pointer; font-size:0.85em; text-shadow:0 1px 2px rgba(0,0,0,0.5); }
+.cp-actions { display:flex; gap:8px; justify-content:flex-end; }
+.cp-actions button { padding:7px 20px; border:none; border-radius:5px; cursor:pointer; font-size:0.85em; }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <h2>📄 投影片列表 <span style="font-size:0.5em;color:#888;font-weight:normal">v0.2</span></h2>
+  <div class="slide-list" id="slideList"></div>
+  <div id="fileInfo"></div>
+  <div class="sb-toolbar">
+    <button onclick="document.getElementById('fileInput').click()">📂 載入</button>
+    <input type="file" id="fileInput" accept=".html" style="display:none" onchange="loadFile(event)">
+    <button onclick="addSlide()">＋ 新增</button>
+    <button onclick="duplicateSlide()">📋 複製</button>
+    <button class="danger" onclick="deleteSlide()">🗑 刪除</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="preview-header">
+    <h3 id="currentSlideLabel">尚未選取投影片</h3>
+    <div>
+      <button onclick="previewFull()">▶ 全螢幕預覽</button>
+      <button onclick="exportHtml()" style="background:#e8aa14;color:#1a1a2e">📥 匯出</button>
+    </div>
+  </div>
+  <div class="editor-area">
+    <div class="editor-tabs">
+      <div class="tab active" onclick="switchTab('wysiwyg',this)">🎨 視覺編輯</div>
+      <div class="tab" onclick="switchTab('source',this)">📝 原始碼</div>
+      <div class="tab" onclick="switchTab('preview',this)">👁 基本預覽</div>
+    </div>
+    <!-- Formatting toolbar (WYSIWYG mode) -->
+    <div class="fmt-toolbar" id="fmtToolbar">
+      <button title="復原" onclick="undoWysiwyg()">↩</button>
+      <button title="取消復原" onclick="redoWysiwyg()">↪</button>
+      <span class="sep"></span>
+      <button title="粗體" onclick="execCmd('bold')"><b>B</b></button>
+      <button title="斜體" onclick="execCmd('italic')"><i>I</i></button>
+      <button title="底線" onclick="execCmd('underline')"><u>U</u></button>
+      <span class="sep"></span>
+      <select onchange="applyHeading(this.value); this.selectedIndex=0">
+        <option value="">段落格式</option>
+        <option value="h1">標題 1</option>
+        <option value="h2">標題 2</option>
+        <option value="h3">標題 3</option>
+        <option value="p">段落</option>
+      </select>
+      <span class="sep"></span>
+      <button title="項目清單" onclick="execCmd('insertUnorderedList')">•</button>
+      <button title="編號清單" onclick="execCmd('insertOrderedList')">1.</button>
+      <span class="sep"></span>
+      <button title="插入連結" onclick="insertLink()">🔗</button>
+      <button title="插入圖片" onclick="document.getElementById('imageInput').click()">🖼</button>
+      <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="insertImage(event)">
+      <span class="sep"></span>
+      <button title="文字顏色" onclick="showColorPicker('foreColor')" style="color:red;font-weight:bold">A</button>
+      <button title="背景顏色" onclick="showColorPicker('hiliteColor')" style="background:#ffe066">A</button>
+      <button title="清除格式" onclick="execCmd('removeFormat')">✕</button>
+    </div>
+    <!-- WYSIWYG pane -->
+    <div class="editor-pane active" id="wysiwyg-pane">
+      <div id="wysiwyg-editor" contenteditable="true"></div>
+    </div>
+    <!-- Source pane -->
+    <div class="editor-pane" id="source-pane">
+      <textarea id="html-editor" spellcheck="false"></textarea>
+    </div>
+    <!-- Preview pane -->
+    <div class="editor-pane" id="preview-pane">
+      <div id="inline-preview"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide editor modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modalTitle">編輯投影片</h2>
+    <label>投影片類型</label>
+    <div class="type-grid" id="typeGrid">
+      <div class="type-item selected" data-type="cover"><span class="emoji">🎬</span>封面</div>
+      <div class="type-item" data-type="content"><span class="emoji">📝</span>內容</div>
+      <div class="type-item" data-type="divider"><span class="emoji">🔀</span>章節</div>
+      <div class="type-item" data-type="two-col"><span class="emoji">📊</span>雙欄</div>
+      <div class="type-item" data-type="grid"><span class="emoji">🔲</span>網格</div>
+      <div class="type-item" data-type="compare"><span class="emoji">⚖️</span>對比</div>
+      <div class="type-item" data-type="thanks"><span class="emoji">🎉</span>結尾</div>
+      <div class="type-item" data-type="quad"><span class="emoji">🔳</span>田字</div>
+      <div class="type-item" data-type="custom"><span class="emoji">⚙️</span>自訂</div>
+    </div>
+    <label>投影片標題</label>
+    <input type="text" id="slideTitle" placeholder="顯示在側欄的標題">
+    <label>HTML 內容</label>
+    <textarea id="slideContent" placeholder="&lt;section&gt;...&lt;/section&gt;"></textarea>
+    <div class="btn-row">
+      <button class="btn-danger" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="saveSlide()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Color picker popup -->
+<div class="cp-overlay" id="cpOverlay" onclick="closeColorPicker(event)">
+  <div class="cp-popup" onclick="event.stopPropagation()">
+    <div class="cp-title" id="cpTitle">選擇顏色</div>
+    <div class="cp-swatches" id="cpSwatches"></div>
+    <div class="cp-row">
+      <div class="cp-preview" id="cpPreview" style="background:#000"></div>
+      <button class="cp-rainbow" onclick="openNativePicker()">🌈 自訂顏色</button>
+      <input type="color" id="cpNative" style="display:none" onchange="pickNativeColor(this.value)">
+    </div>
+    <div class="cp-actions">
+      <button class="btn-secondary" onclick="closeColorPicker()">取消</button>
+      <button class="btn-primary" onclick="confirmColor()">確定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================
+// State
+// ============================================
+let slides = [];
+let currentIndex = -1;
+let editingIndex = -1;
+let currentEditMode = 'wysiwyg';
+
+const TEMPLATES = {
+  cover: (t) => `<section class="cover">\n  <div class="gold-line"></div>\n  <p class="tag">${t || '章節標題'}</p>\n  <h1>${t || '主標題'}</h1>\n  <p class="author">作者名稱</p>\n</section>`,
+  content: (t) => `<section class="content-slide">\n  <div class="header-bar"><h2>${t || '標題'}</h2></div>\n  <div class="header-accent"></div>\n  <div style="padding:20px;text-align:left;font-size:0.9em;line-height:1.8">\n    <p>請在此編輯內容…</p>\n  </div>\n</section>`,
+  divider: (t) => `<section class="divider">\n  <p class="part-num">Part</p>\n  <h2>${t || '章節名稱'}</h2>\n  <p class="sub">說明文字</p>\n</section>`,
+  "two-col": (t) => `<section class="content-slide">\n  <div class="header-bar"><h2>${t || '雙欄標題'}</h2></div>\n  <div class="header-accent"></div>\n  <div class="two-col" style="margin-top:20px">\n    <div class="col-card"><div class="cc-accent" style="background:#065A82"></div><h3>左欄</h3><p>左欄內容</p></div>\n    <div class="col-card"><div class="cc-accent" style="background:#1C7293"></div><h3>右欄</h3><p>右欄內容</p></div>\n  </div>\n</section>`,
+  grid: (t) => `<section class="content-slide">\n  <div class="header-bar"><h2>${t || '網格標題'}</h2></div>\n  <div class="header-accent"></div>\n  <div class="grid-3" style="margin-top:15px">\n    <div class="grid-item"><div class="gi-accent" style="background:var(--teal)"></div><h4>項目一</h4><p>說明</p></div>\n    <div class="grid-item"><div class="gi-accent" style="background:var(--teal)"></div><h4>項目二</h4><p>說明</p></div>\n    <div class="grid-item"><div class="gi-accent" style="background:var(--teal)"></div><h4>項目三</h4><p>說明</p></div>\n  </div>\n</section>`,
+  compare: (t) => `<section class="content-slide">\n  <div class="header-bar"><h2>${t || '對比標題'}</h2></div>\n  <div class="header-accent"></div>\n  <div class="compare" style="margin-top:15px">\n    <div class="col"><div class="col-accent" style="background:#2E7D32"></div><h3 style="color:#2E7D32">✅ 左側</h3><ul><li>項目一</li><li>項目二</li></ul></div>\n    <div class="col"><div class="col-accent" style="background:#E67E22"></div><h3 style="color:#E67E22">⚠️ 右側</h3><ul><li>項目一</li><li>項目二</li></ul></div>\n  </div>\n</section>`,
+  thanks: () => `<section class="thanks">\n  <div class="gold-line" style="margin-top:-20px"></div>\n  <h1>Thank You</h1>\n  <p class="course-title">課程名稱</p>\n  <p class="footer">作者名稱</p>\n</section>`,
+  custom: (t) => `<section class="content-slide">\n  <div class="header-bar"><h2>${t || '自訂投影片'}</h2></div>\n  <div class="header-accent"></div>\n  <div style="padding:20px">\n    <p>自訂內容</p>\n  </div>\n</section>`,
+  quad: (t) => `<section class="content-slide">\n  <div class="header-bar"><h2>${t || '田字佈局'}</h2></div>\n  <div class="header-accent"></div>\n  <div class="four-grid">\n    <div class="four-item"><div class="f-accent" style="background:#065A82"></div><h4>↖ 左上</h4><p>左上內容</p></div>\n    <div class="four-item"><div class="f-accent" style="background:#1C7293"></div><h4>↗ 右上</h4><p>右上內容</p></div>\n    <div class="four-item"><div class="f-accent" style="background:#2E7D32"></div><h4>↙ 左下</h4><p>左下內容</p></div>\n    <div class="four-item"><div class="f-accent" style="background:#E67E22"></div><h4>↘ 右下</h4><p>右下內容</p></div>\n  </div>\n</section>`
+};
+
+// ============================================
+// Init
+// ============================================
+function init() {
+  slides = [];
+  renderList();
+  showEmptyState();
+}
+init();
+
+// Drag & drop
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.html')) {
+    parseHtmlFile(file);
+  } else {
+    showToast('請拖曳 .html 檔案');
+  }
+});
+
+// ============================================
+// File loading
+// ============================================
+function loadFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  parseHtmlFile(file);
+  event.target.value = '';
+}
+
+function parseHtmlFile(file) {
+  const reader = new FileReader();
+  reader.onload = function() {
+    try {
+      parseHtml(reader.result, file.name);
+    } catch (e) {
+      showToast('解析失敗：' + e.message);
+    }
+  };
+  reader.onerror = function() { showToast('讀取檔案失敗'); };
+  reader.readAsText(file);
+}
+
+function parseHtml(html, filename) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  let sections = doc.querySelectorAll('.slides > section');
+  if (sections.length === 0) sections = doc.querySelectorAll('body > section');
+  if (sections.length === 0) {
+    const bodyText = doc.body?.textContent?.trim();
+    if (bodyText) {
+      slides = [{ title: filename || '匯入的內容', content: '<section class="content-slide">\n  <div class="header-bar"><h2>' + (filename || '匯入') + '</h2></div>\n  <div class="header-accent"></div>\n  <div style="padding:20px;white-space:pre-wrap">' + bodyText.substring(0,5000) + '</div>\n</section>', type: 'content' }];
+      renderList(); selectSlide(0);
+    } else {
+      showToast('找不到投影片內容');
+    }
+    return;
+  }
+  slides = [];
+  sections.forEach(sec => {
+    const titleEl = sec.querySelector('h1, h2, h3');
+    const title = titleEl ? titleEl.textContent.trim().substring(0, 40) : '投影片 ' + (slides.length + 1);
+    slides.push({ title, content: sec.outerHTML, type: guessType(sec) });
+  });
+  document.getElementById('fileInfo').textContent = '📄 ' + (filename || '已載入') + ' (' + slides.length + ' 頁)';
+  renderList();
+  selectSlide(0);
+  showToast('已載入 ' + slides.length + ' 張投影片');
+}
+
+function guessType(sec) {
+  if (sec.classList.contains('cover')) return 'cover';
+  if (sec.classList.contains('thanks')) return 'thanks';
+  if (sec.classList.contains('divider')) return 'divider';
+  if (sec.querySelector('.two-col')) return 'two-col';
+  if (sec.querySelector('.grid-3') || sec.querySelector('.grid-2')) return 'grid';
+  if (sec.querySelector('.compare')) return 'compare';
+  return 'content';
+}
+
+// ============================================
+// List
+// ============================================
+function showEmptyState() {
+  currentIndex = -1;
+  document.getElementById('currentSlideLabel').textContent = '尚未載入投影片';
+  document.getElementById('wysiwyg-editor').innerHTML = '';
+  document.getElementById('html-editor').value = '';
+  document.getElementById('inline-preview').innerHTML = '<div style="padding:60px 20px;text-align:center;color:#999"><div style="font-size:3em;margin-bottom:16px">📂</div><div style="font-size:1.1em;margin-bottom:8px">載入 HTML 簡報檔開始編輯</div><div style="font-size:0.9em">或按左側「＋ 新增」從空白投影片開始</div></div>';
+  document.getElementById('fileInfo').textContent = '';
+}
+
+function renderList() {
+  const list = document.getElementById('slideList');
+  list.innerHTML = '';
+  if (slides.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:#666;font-size:0.85em">尚無投影片<br>按「📂 載入」或「＋ 新增」</div>';
+    return;
+  }
+  slides.forEach((s, i) => {
+    const div = document.createElement('div');
+    div.className = 'slide-item' + (i === currentIndex ? ' active' : '');
+    div.innerHTML = '<span class="num">' + (i+1) + '</span><span class="title">' + s.title + '</span>';
+    div.draggable = true;
+    div.dataset.index = i;
+    div.onclick = () => selectSlide(i);
+    div.ondblclick = () => selectSlide(i);
+    div.addEventListener('dragstart', function(e) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', i);
+      this.classList.add('dragging');
+    });
+    div.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    div.addEventListener('dragenter', function(e) {
+      e.preventDefault();
+      this.classList.add('drag-over');
+    });
+    div.addEventListener('dragleave', function() {
+      this.classList.remove('drag-over');
+    });
+    div.addEventListener('drop', function(e) {
+      e.preventDefault();
+      this.classList.remove('drag-over');
+      document.querySelectorAll('.slide-item.dragging').forEach(el => el.classList.remove('dragging'));
+      var from = parseInt(e.dataTransfer.getData('text/plain'));
+      var to = parseInt(this.dataset.index);
+      if (from === to) return;
+      var item = slides.splice(from, 1)[0];
+      slides.splice(to, 0, item);
+      if (currentIndex === from) currentIndex = to;
+      else if (currentIndex > from && currentIndex <= to) currentIndex--;
+      else if (currentIndex < from && currentIndex >= to) currentIndex++;
+      renderList();
+      selectSlide(currentIndex);
+    });
+    div.addEventListener('dragend', function() {
+      this.classList.remove('dragging');
+      document.querySelectorAll('.slide-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+    list.appendChild(div);
+  });
+}
+
+function selectSlide(i) {
+  if (slides.length === 0) { showEmptyState(); return; }
+  if (i < 0 || i >= slides.length) return;
+  saveCurrentContent();
+  currentIndex = i;
+  _undoStack = [];
+  _redoStack = [];
+  _preChangeContent = null;
+  if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+  renderList();
+  const s = slides[i];
+  document.getElementById('currentSlideLabel').textContent = (i+1) + '. ' + s.title;
+  loadContentForCurrentMode();
+  updatePreview();
+}
+
+// ============================================
+// Content save/load helpers
+// ============================================
+function saveCurrentContent() {
+  if (currentIndex < 0 || currentIndex >= slides.length) return;
+  if (currentEditMode === 'wysiwyg') {
+    slides[currentIndex].content = document.getElementById('wysiwyg-editor').innerHTML;
+  } else if (currentEditMode === 'source') {
+    slides[currentIndex].content = document.getElementById('html-editor').value;
+  }
+  updateTitleFromContent(currentIndex);
+}
+
+function updateTitleFromContent(i) {
+  const div = document.createElement('div');
+  div.innerHTML = slides[i].content;
+  const t = div.querySelector('h1, h2');
+  if (t) slides[i].title = t.textContent.trim().substring(0, 40);
+}
+
+function loadContentForCurrentMode() {
+  if (currentIndex < 0) return;
+  const s = slides[currentIndex];
+  if (currentEditMode === 'wysiwyg') {
+    document.getElementById('wysiwyg-editor').innerHTML = s.content;
+    document.getElementById('html-editor').value = s.content;
+  } else if (currentEditMode === 'source') {
+    document.getElementById('html-editor').value = s.content;
+    document.getElementById('wysiwyg-editor').innerHTML = s.content;
+  }
+}
+
+// ============================================
+// Tab switching
+// ============================================
+function switchTab(tab, el) {
+  saveCurrentContent();
+  currentEditMode = tab;
+
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.editor-pane').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+
+  document.getElementById('fmtToolbar').style.display = (tab === 'wysiwyg') ? 'flex' : 'none';
+
+  if (tab === 'wysiwyg') {
+    document.getElementById('wysiwyg-pane').classList.add('active');
+  } else if (tab === 'source') {
+    document.getElementById('source-pane').classList.add('active');
+  } else if (tab === 'preview') {
+    document.getElementById('preview-pane').classList.add('active');
+  }
+  loadContentForCurrentMode();
+  if (tab === 'preview') updatePreview();
+}
+
+// ============================================
+// WYSIWYG formatting commands
+// ============================================
+let _cpCommand = 'foreColor';
+let _cpColor = '#000000';
+let _savedRange = null;
+let _undoStack = [];
+let _redoStack = [];
+const _MAX_UNDO = 50;
+var _preChangeContent = null;
+var _undoTimer = null;
+
+function pushUndoState() {
+  var el = document.getElementById('wysiwyg-editor');
+  if (!el) return;
+  _undoStack.push(el.innerHTML);
+  if (_undoStack.length > _MAX_UNDO) _undoStack.shift();
+  _redoStack = [];
+}
+
+function flushTypingUndo() {
+  if (_undoTimer) {
+    clearTimeout(_undoTimer);
+    _undoTimer = null;
+  }
+  if (_preChangeContent !== null) {
+    _undoStack.push(_preChangeContent);
+    if (_undoStack.length > _MAX_UNDO) _undoStack.shift();
+    _redoStack = [];
+    _preChangeContent = null;
+  }
+}
+
+function undoWysiwyg() {
+  var el = document.getElementById('wysiwyg-editor');
+  if (!el || _undoStack.length === 0) return;
+  _redoStack.push(el.innerHTML);
+  var prev = _undoStack.pop();
+  el.innerHTML = prev;
+  if (currentIndex >= 0) slides[currentIndex].content = prev;
+  document.getElementById('html-editor').value = prev;
+  _preChangeContent = null;
+  if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+  renderList();
+}
+
+function redoWysiwyg() {
+  var el = document.getElementById('wysiwyg-editor');
+  if (!el || _redoStack.length === 0) return;
+  _undoStack.push(el.innerHTML);
+  var next = _redoStack.pop();
+  el.innerHTML = next;
+  if (currentIndex >= 0) slides[currentIndex].content = next;
+  document.getElementById('html-editor').value = next;
+  _preChangeContent = null;
+  if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+  renderList();
+}
+
+const CP_COLORS = ['#000000','#333333','#666666','#999999','#CCCCCC','#FFFFFF','#8B0000','#FF0000','#FF4500','#FF8C00','#FFA500','#FFD700','#FFFF00','#ADFF2F','#006400','#008000','#32CD32','#00FF7F','#008080','#00CED1','#00BFFF','#000080','#0000FF','#1E90FF','#6495ED','#4B0082','#800080','#8A2BE2','#FF00FF','#FF1493','#FF69B4','#FFB6C1','#A0522D','#D2691E','#CD853F','#065A82','#E8AA14','#1C7293','#21295C'];
+
+function showColorPicker(command) {
+  _cpCommand = command;
+  _cpColor = '#000000';
+  const sel = window.getSelection();
+  _savedRange = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null;
+  const title = command === 'foreColor' ? '文字顏色' : '背景顏色';
+  document.getElementById('cpTitle').textContent = title;
+  const container = document.getElementById('cpSwatches');
+  container.innerHTML = '';
+  CP_COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'cp-swatch' + (c === _cpColor ? ' selected' : '');
+    sw.style.background = c;
+    if (c === '#FFFFFF') sw.style.border = '2px solid #ccc';
+    sw.onclick = () => { _cpColor = c; document.querySelectorAll('.cp-swatch').forEach(s => s.classList.remove('selected')); sw.classList.add('selected'); document.getElementById('cpPreview').style.background = c; };
+    container.appendChild(sw);
+  });
+  document.getElementById('cpPreview').style.background = _cpColor;
+  document.getElementById('cpOverlay').classList.add('show');
+}
+
+function openNativePicker() {
+  document.getElementById('cpNative').click();
+}
+
+function pickNativeColor(color) {
+  _cpColor = color;
+  document.getElementById('cpPreview').style.background = color;
+  document.querySelectorAll('.cp-swatch').forEach(s => s.classList.remove('selected'));
+}
+
+function confirmColor() {
+  if (_savedRange) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(_savedRange);
+  }
+  execCmd(_cpCommand, _cpColor);
+  closeColorPicker();
+}
+
+function closeColorPicker(e) {
+  if (e && e.target !== document.getElementById('cpOverlay') && !e.target.closest('.cp-popup')) return;
+  document.getElementById('cpOverlay').classList.remove('show');
+  _savedRange = null;
+}
+function execCmd(command, value) {
+  var el = document.getElementById('wysiwyg-editor');
+  el.focus();
+  flushTypingUndo();
+  pushUndoState();
+  document.execCommand(command, false, value || null);
+  _preChangeContent = el.innerHTML;
+}
+
+function applyHeading(tag) {
+  if (!tag) return;
+  var el = document.getElementById('wysiwyg-editor');
+  if (!el) return;
+  el.focus();
+  flushTypingUndo();
+  pushUndoState();
+  var sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  if (sel.isCollapsed) {
+    var node = sel.anchorNode;
+    while (node && node.parentNode && node !== el) {
+      if (node.nodeType === 1 && node.nodeName.match(/^(P|H[1-6]|DIV|LI)$/)) {
+        var h = document.createElement(tag);
+        while (node.firstChild) h.appendChild(node.firstChild);
+        node.parentNode.replaceChild(h, node);
+        break;
+      }
+      node = node.parentNode;
+    }
+    _preChangeContent = el.innerHTML;
+    return;
+  }
+  var range = sel.getRangeAt(0);
+  var fragment = range.extractContents();
+  var wrapper = document.createElement(tag);
+  wrapper.appendChild(fragment);
+  range.insertNode(wrapper);
+  sel.removeAllRanges();
+  var r = document.createRange();
+  r.selectNodeContents(wrapper);
+  sel.addRange(r);
+  _preChangeContent = el.innerHTML;
+}
+
+function insertLink() {
+  const url = prompt('輸入連結網址:', 'https://');
+  if (!url) return;
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  execCmd('createLink', url);
+  // execCommand moves cursor inside <a>, so walk up to find it
+  let node = sel.anchorNode;
+  while (node && node.nodeName !== 'A') node = node.parentNode;
+  if (node && node.nodeName === 'A') node.setAttribute('target', '_blank');
+}
+
+function insertImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('wysiwyg-editor').focus();
+    const html = '<div class="img-wrap" contenteditable="false" style="display:inline-block"><img src="' + e.target.result + '" style="display:block;width:100%;height:auto" draggable="false"></div>';
+    document.execCommand('insertHTML', false, html);
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+// Capture state BEFORE contenteditable modifies DOM
+document.getElementById('wysiwyg-editor').addEventListener('keydown', function(e) {
+  if (currentIndex < 0 || currentEditMode !== 'wysiwyg') return;
+  if (_preChangeContent === null) {
+    _preChangeContent = document.getElementById('wysiwyg-editor').innerHTML;
+  }
+});
+document.getElementById('wysiwyg-editor').addEventListener('paste', function(e) {
+  if (currentIndex < 0 || currentEditMode !== 'wysiwyg') return;
+  if (_preChangeContent === null) {
+    _preChangeContent = document.getElementById('wysiwyg-editor').innerHTML;
+  }
+});
+
+// Auto-save WYSIWYG on input
+document.getElementById('wysiwyg-editor').addEventListener('input', () => {
+  if (currentIndex >= 0 && currentEditMode === 'wysiwyg') {
+    var el = document.getElementById('wysiwyg-editor');
+    var content = el.innerHTML;
+    slides[currentIndex].content = content;
+    document.getElementById('html-editor').value = content;
+    updateTitleFromContent(currentIndex);
+    renderList();
+    if (_undoTimer) clearTimeout(_undoTimer);
+    _undoTimer = setTimeout(function() {
+      _undoTimer = null;
+      if (_preChangeContent !== null) {
+        _undoStack.push(_preChangeContent);
+        if (_undoStack.length > _MAX_UNDO) _undoStack.shift();
+        _redoStack = [];
+        _preChangeContent = null;
+      }
+    }, 1000);
+  }
+});
+
+// Auto-save source on input
+document.getElementById('html-editor').addEventListener('input', () => {
+  if (currentIndex >= 0 && currentEditMode === 'source') {
+    var content = document.getElementById('html-editor').value;
+    slides[currentIndex].content = content;
+    document.getElementById('wysiwyg-editor').innerHTML = content;
+    updateTitleFromContent(currentIndex);
+    renderList();
+  }
+});
+
+// ============================================
+// Preview
+// ============================================
+function updatePreview() {
+  const container = document.getElementById('inline-preview');
+  let html = '<div class="ip-nav">';
+  html += '<button onclick="selectSlide(' + (currentIndex - 1) + ')"' + (currentIndex <= 0 ? ' disabled style="opacity:0.3"' : '') + '>◀ 上一頁</button>';
+  html += '<span>第 ' + (currentIndex + 1) + ' / ' + slides.length + ' 頁</span>';
+  html += '<button onclick="selectSlide(' + (currentIndex + 1) + ')"' + (currentIndex >= slides.length - 1 ? ' disabled style="opacity:0.3"' : '') + '>下一頁 ▶</button>';
+  html += '</div>';
+  slides.forEach((s, i) => {
+    var vis = (i === currentIndex) ? ' style="display:block"' : ' style="display:none"';
+    html += '<div class="ip-slide"' + vis + '><div class="ip-info">' + (i+1) + '. ' + s.title + '</div>' + s.content + '</div>';
+  });
+  html += '<div class="ip-edit-hint">⇦ 點選左側側欄投影片列表切換，或按上一頁/下一頁</div>';
+  container.innerHTML = html;
+}
+
+function buildFullHtml(activeIndex) {
+  let sections = slides.map(s => s.content).join('\n');
+  let initialSlide = activeIndex >= 0 ? activeIndex : 0;
+  return '<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Preview</title>\n<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.css">\n<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/night.min.css">\n<style>\n:root{--dark-blue:#065A82;--teal:#1C7293;--midnight:#21295C;--gold:#E8AA14;--light-bg:#F5F9FC;--text-dark:#1A1A2E;--green:#2E7D32;--orange:#E67E22}\n.reveal{font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif}\n.reveal h1,.reveal h2,.reveal h3{font-family:"Microsoft JhengHei","PingFang TC",serif;font-weight:bold}\n.cover{background:linear-gradient(135deg,#21295C 0%,#065A82 100%)!important;color:white}\n.cover .gold-line{border-top:4px solid var(--gold);width:100%;position:absolute;top:0}\n.cover h1{font-size:2.2em;color:white;margin-bottom:0.3em}\n.cover .tag{font-size:1em;color:var(--gold);font-weight:bold;margin-bottom:0.5em}\n.cover .author{font-size:1em;color:#CADCFC;margin-top:1em}\n.divider{background:linear-gradient(135deg,#065A82,#1C7293)!important;color:white}\n.divider .part-num{font-size:1em;color:var(--gold);font-weight:bold;margin-bottom:0.3em}\n.divider h2{font-size:2em;color:white;margin-bottom:0.3em}\n.divider .sub{font-size:1em;color:#CADCFC}\n.content-slide{background:#F5F9FC!important;color:#1A1A2E}\n.content-slide .header-bar{background:var(--dark-blue);padding:16px 30px;text-align:left;margin:-40px -20px 0 -20px}\n.content-slide .header-bar h2{color:white;font-size:1.4em;margin:0}\n.content-slide .header-accent{height:3px;background:var(--gold);margin:0 -20px 20px -20px}\n.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;text-align:left}\n.two-col .col-card{background:white;border-radius:8px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}\n.two-col .col-card h3{font-size:1.1em;margin:0 0 10px 0}\n.two-col .col-card p{font-size:0.8em;line-height:1.5}\n.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:15px}\n.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}\n.grid-item{background:white;padding:12px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}\n.grid-item .gi-accent{height:4px;margin:-12px -12px 10px -12px;border-radius:6px 6px 0 0}\n.grid-item h4{font-size:1em;margin:0 0 4px 0;color:var(--dark-blue)}\n.grid-item p{font-size:0.75em;color:#555;line-height:1.4}\n.compare{display:flex;gap:15px}\n.compare .col{flex:1;background:white;border-radius:8px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}\n.compare .col .col-accent{height:4px;margin:-16px -16px 12px -16px;border-radius:8px 8px 0 0}\n.compare .col h3{font-size:1.2em;margin:0 0 8px 0}\n.compare .col ul{font-size:0.9em;line-height:1.8;padding-left:20px}\n.thanks{background:linear-gradient(135deg,#21295C 0%,#065A82 100%)!important;color:white}\n.thanks h1{font-size:2.5em;color:white}\n.thanks .course-title{font-size:1.2em;color:var(--gold);margin:0.3em 0}\n.thanks .footer{font-size:0.9em;color:#CADCFC;margin-top:0.8em}\n.slides{text-align:center}\n.col-card .cc-accent{height:4px;margin:-16px -16px 12px -16px;border-radius:8px 8px 0 0}\n.card-grid{display:flex;gap:15px;flex-wrap:wrap}\n.card{background:white;border-radius:8px;padding:16px;flex:1;min-width:200px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}\n.card h3{font-size:1.1em;margin:0 0 6px 0}\n.card .card-accent{height:4px;margin:-16px -16px 12px -16px;border-radius:8px 8px 0 0}\n.steps{display:flex;gap:12px;flex-wrap:wrap}\n.step-card{background:white;border-radius:8px;padding:14px;flex:1;min-width:160px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center}\n.step-card .step-accent{height:4px;margin:-14px -14px 10px -14px;border-radius:8px 8px 0 0}\n.step-card h4{font-size:1em;margin:0 0 4px 0;color:var(--dark-blue)}\n.step-card p{font-size:0.75em;color:#555;line-height:1.5}\n.chip-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}\n.chip{background:white;border-left:4px solid var(--teal);padding:6px 14px;border-radius:4px;font-size:0.85em}\n.bullet-list{text-align:left;font-size:0.9em;line-height:2;padding:0 50px}\n.highlight{background:var(--gold);color:#1A1A2E;font-weight:bold;padding:8px 20px;border-radius:8px;display:inline-block;margin-top:10px}\n.big-num{font-size:2em;font-weight:bold}\n.stat-large{font-size:2.6em;font-weight:bold;color:var(--gold)}\n.four-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;margin-top:15px;min-height:200px}\n.four-item{background:white;border-radius:8px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,0.08);display:flex;flex-direction:column;text-align:left}\n.four-item .f-accent{height:4px;margin:-14px -14px 10px -14px;border-radius:6px 6px 0 0}\n.four-item h4{font-size:0.95em;margin:0 0 6px 0;color:var(--dark-blue)}\n.four-item p{font-size:0.85em;color:#333;line-height:1.6;margin:0}\n</style></head><body><div class="reveal"><div class="slides">' + sections + '</div></div>\n<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.min.js"><\/script>\n<script>var ri=' + initialSlide + ';Reveal.addEventListener("ready",function(){Reveal.slide(ri)});Reveal.initialize({slideNumber:\'c/t\',transition:\'slide\',width:1280,height:720,margin:0.04,center:true,controls:true,progress:true,keyboard:true,touch:true,initialSlide:ri})<\/script></body></html>';
+}
+
+// ============================================
+// Slide CRUD
+// ============================================
+function addSlide() {
+  editingIndex = -1;
+  document.getElementById('modalTitle').textContent = '新增投影片';
+  document.getElementById('slideTitle').value = '新投影片';
+  document.getElementById('slideContent').value = TEMPLATES.content('新投影片');
+  document.querySelectorAll('.type-item').forEach(el => el.classList.remove('selected'));
+  document.querySelector('.type-item[data-type="content"]').classList.add('selected');
+  document.getElementById('modal').classList.add('show');
+}
+
+function duplicateSlide() {
+  if (currentIndex < 0 || slides.length === 0) return showToast('請先選取投影片');
+  const s = slides[currentIndex];
+  slides.splice(currentIndex + 1, 0, { title: s.title + ' (複製)', content: s.content, type: s.type });
+  renderList();
+  selectSlide(currentIndex + 1);
+  showToast('已複製投影片');
+}
+
+function deleteSlide() {
+  if (currentIndex < 0) return showToast('請先選取投影片');
+  if (!confirm('刪除「' + slides[currentIndex].title + '」？')) return;
+  slides.splice(currentIndex, 1);
+  if (slides.length === 0) { showEmptyState(); renderList(); return; }
+  if (currentIndex >= slides.length) currentIndex = slides.length - 1;
+  _undoStack = [];
+  _redoStack = [];
+  _preChangeContent = null;
+  if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+  renderList();
+  const s = slides[currentIndex];
+  document.getElementById('currentSlideLabel').textContent = (currentIndex + 1) + '. ' + s.title;
+  loadContentForCurrentMode();
+  updatePreview();
+  showToast('已刪除投影片');
+}
+
+// ============================================
+// Modal
+// ============================================
+document.querySelectorAll('.type-item').forEach(el => {
+  el.onclick = () => {
+    document.querySelectorAll('.type-item').forEach(e => e.classList.remove('selected'));
+    el.classList.add('selected');
+    const type = el.dataset.type;
+    const title = document.getElementById('slideTitle').value || '新投影片';
+    // Only replace content with template when adding a new slide
+    if (editingIndex < 0) {
+      document.getElementById('slideContent').value = TEMPLATES[type] ? TEMPLATES[type](title) : TEMPLATES.content(title);
+    }
+  };
+});
+
+document.getElementById('slideTitle').addEventListener('input', () => {});
+
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+function saveSlide() {
+  const title = document.getElementById('slideTitle').value || '未命名';
+  const content = document.getElementById('slideContent').value;
+  const type = document.querySelector('.type-item.selected').dataset.type;
+  var idx = (currentIndex >= 0) ? currentIndex + 1 : slides.length;
+  slides.splice(idx, 0, { title, content, type });
+  renderList();
+  selectSlide(idx);
+  showToast('已新增投影片');
+  closeModal();
+}
+
+// ============================================
+// Export / Preview full
+// ============================================
+function exportHtml() {
+  if (currentIndex >= 0) saveCurrentContent();
+  const full = buildFullHtml(-1);
+  const blob = new Blob([full], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const fileInfo = document.getElementById('fileInfo').textContent;
+  const nameMatch = fileInfo.match(/📄\s*(.+?)\s*\(/);
+  a.download = (nameMatch ? nameMatch[1].replace(/\.[^.]+$/, '') : '簡報') + '_編輯.html';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ 已匯出 HTML 簡報');
+}
+
+function previewFull() {
+  if (currentIndex >= 0) saveCurrentContent();
+  const full = buildFullHtml(currentIndex);
+  const w = window.open('', '_blank');
+  if (!w) { showToast('⚠️ 請允許彈出視窗'); return; }
+  w.document.write(full);
+  w.document.close();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); exportHtml(); }
+  if (e.ctrlKey && e.key === 'n') { e.preventDefault(); addSlide(); }
+  if (e.key === 'Delete' && !e.target.closest('input,textarea,[contenteditable]')) deleteSlide();
+  if (e.key === 'Escape') closeModal();
+});
+</script>
+</body>
+</html>

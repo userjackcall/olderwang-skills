@@ -1,0 +1,3 @@
+display_name: Slidev 簡報編輯器
+short_description: 用 Slidev 生成 HTML 簡報 + 提供所見即所得編輯器
+default_prompt: 幫我建立一份 Slidev HTML 簡報
